@@ -1,0 +1,72 @@
+name: ci-quality-dashboard
+services:
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-cidb}
+      POSTGRES_USER: ${POSTGRES_USER:-cidb}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes: [postgres_data:/var/lib/postgresql/data]
+    networks: [app]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  stable:
+    image: ${BACKEND_IMAGE:-ci-quality-dashboard-backend:local}
+    build: ./backend
+    environment:
+      PORT: 8080
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/${POSTGRES_DB:-cidb}
+      SPRING_DATASOURCE_DRIVER: org.postgresql.Driver
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-cidb}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      SPRING_JPA_DIALECT: org.hibernate.dialect.PostgreSQLDialect
+      SPRING_JPA_HIBERNATE_DDL_AUTO: update
+      SPRING_H2_CONSOLE_ENABLED: "false"
+      CI_INGESTION_TOKEN: ${CI_INGESTION_TOKEN:-}
+    depends_on:
+      db: { condition: service_healthy }
+    networks: [app]
+  canary:
+    image: ${CANARY_IMAGE:-ci-quality-dashboard-backend:local}
+    build: ./backend
+    environment:
+      PORT: 8080
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/${POSTGRES_DB:-cidb}
+      SPRING_DATASOURCE_DRIVER: org.postgresql.Driver
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-cidb}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      SPRING_JPA_DIALECT: org.hibernate.dialect.PostgreSQLDialect
+      SPRING_JPA_HIBERNATE_DDL_AUTO: update
+      SPRING_H2_CONSOLE_ENABLED: "false"
+      CI_INGESTION_TOKEN: ${CI_INGESTION_TOKEN:-}
+    depends_on:
+      db: { condition: service_healthy }
+    networks: [app]
+  gateway:
+    image: nginx:1.27-alpine
+    ports: ["${HTTP_PORT:-8080}:80"]
+    volumes:
+      - ./deploy/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on: [stable]
+    networks: [app]
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+  frontend:
+    image: ${FRONTEND_IMAGE:-ci-quality-dashboard-frontend:local}
+    build: ./frontend
+    volumes:
+      - ./deploy/deployment-report.json:/usr/share/nginx/html/deployment-report.json:ro
+    ports: ["${FRONTEND_PORT:-3000}:8080"]
+    depends_on: [gateway]
+    networks: [app]
+volumes:
+  postgres_data:
+networks:
+  app:
+    driver: bridge

@@ -1,0 +1,6 @@
+{
+  "name": "CI Quality Dashboard",
+  "description": "Continuous Integration pipeline monitor and automated testing quality dashboard with real test metrics, failure diagnostics, and coverage tracking.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

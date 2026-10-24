@@ -1,0 +1,107 @@
+name: Full-Stack CI Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  checks: write
+  pull-requests: write
+
+jobs:
+  build-and-test:
+    name: Build, Test & Validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      # Step 1: Checkout source code
+      - name: 1. Checkout Source Code
+        uses: actions/checkout@v4
+
+      # Step 2: Set up Java 17
+      - name: 2. Set up Java 17 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'maven'
+
+      # Step 3: Set up Node.js LTS
+      - name: 3. Set up Node.js LTS
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      # Step 4: Compile Backend
+      - name: 4. Compile Backend
+        run: |
+          mvn -f backend/pom.xml clean compile
+
+      # Step 5: Run Unit Tests & MockMvc Integration Tests
+      - name: 5. Run Unit & Controller Integration Tests
+        run: |
+          mvn -f backend/pom.xml test
+
+      # Step 6: Run Pact Consumer-Driven Contract Tests
+      - name: 6. Verify Pact Contract Tests
+        run: |
+          mvn -f backend/pom.xml test -Dtest=PactProviderVerificationTest
+
+      # Step 7: Run Database Integration Tests with Testcontainers (Docker supported on ubuntu-latest)
+      - name: 7. Run Testcontainers Database Integration Tests
+        run: |
+          mvn -f backend/pom.xml test -Dtest=PostgreSqlTestcontainersTest
+
+      # Step 8: Verify JaCoCo Coverage Report
+      - name: 8. Verify JaCoCo Code Coverage
+        run: |
+          mvn -f backend/pom.xml jacoco:report
+          ls -la backend/target/site/jacoco/
+
+      # Step 9: Install Frontend Dependencies
+      - name: 9. Install Frontend Dependencies
+        run: |
+          npm ci
+
+      # Step 10: Run Frontend Type Check and Linting
+      - name: 10. Run Frontend Typecheck
+        run: |
+          npm run build
+
+      # Step 11: Ingest CI Results into Dashboard (if configured)
+      - name: 11. Ingest CI Results to Dashboard
+        if: always()
+        env:
+          CI_API_BASE_URL: ${{ secrets.CI_API_BASE_URL }}
+          CI_INGESTION_TOKEN: ${{ secrets.CI_INGESTION_TOKEN }}
+          GITHUB_SHA: ${{ github.sha }}
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          SUREFIRE_DIR: backend/target/surefire-reports
+          JACOCO_XML: backend/target/site/jacoco/jacoco.xml
+        run: |
+          python3 scripts/publish-ci-results.py
+
+      # Step 12: Upload Test Reports Artifact
+      - name: 12. Upload JUnit Test Reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-test-reports
+          path: backend/target/surefire-reports/
+          retention-days: 14
+
+      # Step 13: Upload JaCoCo Coverage Artifact
+      - name: 13. Upload JaCoCo Coverage Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jacoco-coverage-report
+          path: backend/target/site/jacoco/
+          retention-days: 14

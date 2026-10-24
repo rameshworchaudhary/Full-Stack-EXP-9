@@ -1,0 +1,7 @@
+.git
+node_modules
+dist
+backend/target
+.env*
+.deploy.env
+.deploy-state

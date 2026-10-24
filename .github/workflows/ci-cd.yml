@@ -1,0 +1,92 @@
+name: CI and Canary Deployment
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '17', cache: maven }
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+      - name: Backend tests and JaCoCo
+        run: mvn -B -f backend/pom.xml clean verify
+      - name: Frontend type check and production build
+        run: |
+          npm install --no-audit --no-fund
+          npm run lint
+          npm run build
+      - name: Upload test and coverage reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-reports
+          path: |
+            backend/target/surefire-reports/
+            backend/target/failsafe-reports/
+            backend/target/site/jacoco/
+          if-no-files-found: ignore
+  image:
+    needs: validate
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: meta
+        run: echo "tag=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Build and publish tested images
+        env:
+          USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+        run: |
+          test -n "$USERNAME"
+          docker build -f backend/Dockerfile -t "$USERNAME/ci-quality-dashboard-backend:${GITHUB_SHA}" backend
+          docker build -f frontend/Dockerfile -t "$USERNAME/ci-quality-dashboard-frontend:${GITHUB_SHA}" .
+          docker push "$USERNAME/ci-quality-dashboard-backend:${GITHUB_SHA}"
+          docker push "$USERNAME/ci-quality-dashboard-frontend:${GITHUB_SHA}"
+  deploy:
+    needs: [validate, image]
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Validate deployment configuration
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          USER: ${{ secrets.DEPLOY_USER }}
+          KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          PATH_VALUE: ${{ secrets.DEPLOY_PATH }}
+        run: |
+          for name in HOST USER KEY PATH_VALUE; do eval "value=\$$name"; test -n "$value" || { echo "Missing required deployment secret: $name"; exit 1; }; done
+      - name: Deploy immutable image through SSH
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          IMAGE: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/ci-quality-dashboard-backend:${{ needs.image.outputs.tag }}
+          FRONTEND_IMAGE: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/ci-quality-dashboard-frontend:${{ needs.image.outputs.tag }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ secrets.DEPLOY_PORT || 22 }}
+          envs: IMAGE,FRONTEND_IMAGE,DEPLOY_PATH
+          script: |
+            cd "$DEPLOY_PATH"
+            export DEPLOY_IMAGE="$IMAGE"
+            chmod +x deploy/deploy.sh
+            ./deploy/deploy.sh

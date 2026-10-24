@@ -1,0 +1,7 @@
+com\ci\dashboard\contract\PactProviderVerificationTest.class
+com\ci\dashboard\controller\DashboardControllerTest.class
+com\ci\dashboard\service\DashboardServiceTest.class
+com\ci\dashboard\controller\HealthControllerTest.class
+com\ci\dashboard\service\TestRunServiceTest.class
+com\ci\dashboard\integration\PostgreSqlTestcontainersTest.class
+com\ci\dashboard\controller\TestRunControllerMockMvcTest.class

@@ -1,0 +1,106 @@
+{
+  "consumer": {
+    "name": "FrontendConsumer"
+  },
+  "provider": {
+    "name": "BackendProvider"
+  },
+  "interactions": [
+    {
+      "description": "A request for backend health status",
+      "request": {
+        "method": "GET",
+        "path": "/api/health"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "status": "UP",
+          "app": "CI Quality Dashboard Backend",
+          "version": "1.0.0"
+        }
+      }
+    },
+    {
+      "description": "A request for dashboard summary metrics",
+      "providerState": "dashboard summary data exists",
+      "providerStates": [
+        {
+          "name": "dashboard summary data exists"
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/api/dashboard/summary"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "totalRuns": 1,
+          "latestStatus": "SUCCESS",
+          "totalTestsExecuted": 25,
+          "passedTests": 25,
+          "failedTests": 0,
+          "skippedTests": 0,
+          "overallSuccessRate": 100.0,
+          "averageCoverage": 91.5
+        },
+        "matchingRules": {
+          "$.body.totalRuns": { "match": "type" },
+          "$.body.latestStatus": { "match": "type" },
+          "$.body.totalTestsExecuted": { "match": "type" },
+          "$.body.passedTests": { "match": "type" },
+          "$.body.overallSuccessRate": { "match": "type" },
+          "$.body.averageCoverage": { "match": "type" }
+        }
+      }
+    },
+    {
+      "description": "A request for test run list",
+      "providerState": "test runs exist in system",
+      "providerStates": [
+        {
+          "name": "test runs exist in system"
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/api/test-runs"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": [
+          {
+            "runIdentifier": "RUN-CONTRACT-100",
+            "commitSha": "e4d3c2b1",
+            "branchName": "main",
+            "pipelineStatus": "SUCCESS",
+            "totalTests": 25,
+            "passedTests": 25,
+            "failedTests": 0
+          }
+        ],
+        "matchingRules": {
+          "$.body": { "min": 1 },
+          "$.body[*].runIdentifier": { "match": "type" },
+          "$.body[*].commitSha": { "match": "type" },
+          "$.body[*].pipelineStatus": { "match": "type" }
+        }
+      }
+    }
+  ],
+  "metadata": {
+    "pactSpecification": {
+      "version": "3.0.0"
+    }
+  }
+}
